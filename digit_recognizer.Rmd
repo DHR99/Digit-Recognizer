@@ -1,0 +1,146 @@
+---
+title: "Digit Recognizer Kaggle"
+author: "Diego A. Hernandez Ronquillo"
+date: "January 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+|DIGIT RECOGNIZER|
+
+Loading the data
+```{r}
+traindigit = read.csv("train.csv")
+testdigit = read.csv("test.csv")
+```
+
+
+Libraries
+```{r}
+library(tidyverse)
+library(caret)
+library(readr)
+```
+
+
+```{r}
+glimpse(traindigit)
+```
+
+Label variable should be categorized (0-9):
+```{r}
+traindigit$label = as.factor(traindigit$label)
+levels(traindigit$label)
+
+traindigit %>%
+  group_by(label) %>%
+  count(label)
+```
+
+```{r}
+ggplot(data = traindigit, aes(x = label, fill = label)) + geom_bar()
+```
+
+Counting NAs
+```{r}
+na.cols = which(colSums(is.na(traindigit)) > 0)
+sort(colSums(sapply(traindigit[na.cols], is.na)), decreasing = TRUE)
+paste('There are', length(na.cols), 'columns with missing values')
+```
+No NAs values
+
+**|DATA PREPROCESSING|**
+
+As we have plenty of 0 in some of the columns, this will make the variance to be close to 0 which is not good for our model. We will find those predictors and we will drop them from the dataset
+```{r}
+near0 = nearZeroVar(traindigit[,-1], saveMetrics = T, freqCut = 10000/1, uniqueCut = 1/7)
+sum(near0$zeroVar) # how many distinct values, will return a vector of logicals
+sum(near0$nzv) # found how many predictors have a variance close to 0
+```
+
+```{r}
+cutvar = rownames(near0[near0$nzv==TRUE,]) #from the dataset near0 extract the name of the variables with nzv = TRUE(variance close to 0)
+var = setdiff(names(traindigit), cutvar)
+traindigit = traindigit[, var] # we removed the columns with 0 variance
+```
+
+
+Due to the huge amount of predictors we will apply the PCA process
+Scale data with maximum and then obtain the covariance
+```{r}
+label = traindigit$label
+label = as.factor(label)
+traindigit$label = NULL
+# We found the maximum value in every column, which is the same: 255
+colMax = function(traindigit) sapply(traindigit, max, na.rm = TRUE)
+colMax(traindigit)
+```
+
+Scale data:
+```{r}
+traindigit = traindigit/255
+covariance_train = cov(traindigit)
+# Used the covariance instead of correlation because the scale is similar among all the predictors
+```
+
+Now we willl apply PCA to the covariance and see the componentes for modelling
+```{r}
+train_PCA = prcomp(covariance_train)
+varex = train_PCA$sdev^2/sum(train_PCA$sdev^2)
+varcum = cumsum(varex)
+result = data.frame(num = 1:length(train_PCA$sdev),
+                         ex = varex,
+                         cum = varcum)
+
+plot(result$num, result$cum, type = "pairs", xlim = c(0,100),
+     main = "Variance explained by components",
+     xlab = "Number of Components", ylab = "Variance Explained")
+abline(v = 25, lty = 2)
+```
+
+The % of the variance explained by the componentes stop its increase at 30(more or less), this should be a good number for our components. According to the table the top30 components explain nearly 98% of the variance
+
+Plotting
+```{r}
+train_digit_score = as.matrix(traindigit) %*% train_PCA$rotation[, 1:30]
+traindigit = cbind(label, as.data.frame(train_digit_score))
+
+ggplot(data = traindigit, aes(x = PC1, y = PC2, color = label)) + geom_point()
+```
+
+**|PREDICTION|**
+
+```{r}
+model_SVM = train(label~., data = traindigit,
+                 method = "svmRadial",
+                 trControl = trainControl(method = "cv",
+                                        number = 5),
+                 tuneGrid = data.frame(sigma = 0.01104614,
+                                      C = 3.5))
+model_SVM
+```
+
+
+
+```{r}
+testdigit = testdigit[, var[-1]]/255
+testdigit = as.matrix(testdigit) %*% train_PCA$rotation[, 1:30]
+testdigit = as.data.frame(testdigit)
+
+pred = predict(model_SVM, testdigit)
+prediction = data.frame(ImageId = 1:nrow(testdigit), Label = pred)
+```
+
+
+Export it
+```{r}
+write.csv(prediction, "digit_recognizer_answer.csv")
+```
+
+
+
+
+
