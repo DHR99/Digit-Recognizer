@@ -54,7 +54,7 @@ No NAs values
 
 **|DATA PREPROCESSING|**
 
-As we have plenty of 0 in some of the columns, this will make the variance to be close to 0 which is not good for our model. We will find those predictors and we will drop them from the dataset
+As we have plenty of columns with similar values, this will make the variance to be close to 0 which is not good for our model. We will find those predictors and we will drop them from the dataset
 ```{r}
 near0 = nearZeroVar(traindigit[,-1], saveMetrics = T, freqCut = 10000/1, uniqueCut = 1/7)
 sum(near0$zeroVar) # how many distinct values, will return a vector of logicals
